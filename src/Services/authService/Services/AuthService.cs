@@ -2,8 +2,6 @@
 using authService.Models;
 using authService.Repositories.Interfaces;
 using authService.Services.Interfaces;
-using BCrypt.Net;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -22,24 +20,27 @@ namespace authService.Services
                 return null;
             }
 
-            if(!BCrypt.Net.BCrypt.Verify(request.password, user.password_hash))
+            if (!BCrypt.Net.BCrypt.Verify(request.password, user.password_hash))
             {
                 return null;
             }
 
             string token = GenerateJwtToken(user);
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+            var expiryMinutes = double.Parse(jwtSettings["ExpiryMinutes"] ?? "60");
 
             var response = new LoginResponse
             {
-                access_token = token,
-                expires_at = DateTime.UtcNow.AddHours(1),
-                user = new UserResponse
+                AccessToken = token,
+                TokenType = "Bearer",
+                ExpiresAt = DateTime.UtcNow.AddMinutes(expiryMinutes),
+                User = new UserResponse
                 {
-                    user_id = user.user_id,
-                    username = user.username,
-                    email = user.email,
-                    role = user.role,
-                    avatar_url = user.avatar_url
+                    UserId = user.user_id,
+                    Username = user.username,
+                    Email = user.email,
+                    Role = user.role,
+                    AvatarUrl = user.avatar_url
                 }
             };
             return response;
@@ -48,7 +49,34 @@ namespace authService.Services
 
         private string GenerateJwtToken(User user)
         {
-            return "token ne` ahihi";
+            var jwtSettings = _configuration.GetSection("JwtSettings");
+            var secretKey = jwtSettings["SecretKey"] ?? throw new Exception("JWT Secret Key is not configured.");
+            var issuer = jwtSettings["Issuer"] ?? throw new Exception("JWT Issuer is not configured.");
+            var audience = jwtSettings["Audience"] ?? throw new Exception("JWT Audience is not configured.");
+            var expiryMinutes = int.Parse(jwtSettings["ExpiryMinutes"] ?? "60");
+
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.Sub, user.user_id.ToString()),
+                new Claim(JwtRegisteredClaimNames.Email, user.email ?? ""),
+                new Claim("role", user.role.ToString()),
+                new Claim("username", user.username)
+            };
+
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddMinutes(expiryMinutes),
+                Issuer = issuer,
+                Audience = audience,
+                SigningCredentials = creds
+            };
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            return tokenHandler.WriteToken(token);
         }
     }
 }
