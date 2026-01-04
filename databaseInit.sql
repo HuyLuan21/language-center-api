@@ -170,7 +170,7 @@ CREATE TABLE ExamResults (
     exam_id UNIQUEIDENTIFIER NOT NULL,
     student_id UNIQUEIDENTIFIER NOT NULL,
     score INT NOT NULL,
-    CONSTRAINT FK_ExamResults_Exams FOREIGN KEY (exam_id) REFERENCES Exams (exam_id) ON DELETE CASCADE,
+    CONSTRAINT FK_ExamResults_Exams FOREIGN KEY (exam_id) REFERENCES Exams (exam_id),
     CONSTRAINT FK_ExamResults_Students FOREIGN KEY (student_id) REFERENCES Students (student_id)
 );
 
@@ -182,7 +182,7 @@ CREATE TABLE ExamPartResults (
     exam_result_id UNIQUEIDENTIFIER NOT NULL,
     score DECIMAL(10, 2) NOT NULL,
 
-    CONSTRAINT FK_ExamPartResults_ExamParts FOREIGN KEY (exam_part_id) REFERENCES ExamParts (exam_part_id) ON DELETE CASCADE,
+    CONSTRAINT FK_ExamPartResults_ExamParts FOREIGN KEY (exam_part_id) REFERENCES ExamParts (exam_part_id),
     CONSTRAINT FK_ExamPartResults_ExamResults FOREIGN KEY (exam_result_id) REFERENCES ExamResults (exam_result_id)
 );
 
@@ -326,6 +326,46 @@ BEGIN
     END CATCH
 END
 
+GO 
+CREATE OR ALTER PROCEDURE sp_DeleteExam
+    @exam_id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- 1. Xóa các ExamParts (Con) trước
+        -- Phải xóa con trước thì mới xóa được cha (nếu có khóa ngoại)
+        DELETE FROM ExamParts WHERE exam_id = @exam_id;
+
+        -- 2. Xóa Exam (Cha)
+        DELETE FROM Exams WHERE exam_id = @exam_id;
+
+        -- 3. Kiểm tra xem có xóa được dòng nào của bảng Exam không
+        IF @@ROWCOUNT > 0 
+        BEGIN
+            COMMIT TRANSACTION;
+            SELECT 1; -- Trả về 1 (Thành công)
+        END
+        ELSE
+        BEGIN
+            -- Không tìm thấy ID để xóa
+            ROLLBACK TRANSACTION;
+            SELECT 0; -- Trả về 0 (Thất bại / Không tìm thấy)
+        END
+
+    END TRY
+    BEGIN CATCH
+        -- Nếu lỗi (ví dụ: Đề thi đã có sinh viên làm bài -> dính khóa ngoại bảng StudentScores)
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        
+        -- Ném lỗi ra để C# bắt được (hoặc ông có thể return 0 tùy logic)
+        THROW; 
+    END CATCH
+END
+GO
 
 
 -- =============================================
