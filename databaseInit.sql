@@ -147,18 +147,19 @@ CREATE TABLE Exams (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     room NVARCHAR (2048),
-    max_score INT NOT NULL,
-    passing_score INT NOT NULL,
+    max_score FLOAT NOT NULL,
+    passing_score FLOAT DEFAULT 0,
     weightage FLOAT CHECK (weightage >= 0 AND weightage <= 1) DEFAULT 0,
     CONSTRAINT FK_Exams_Classes FOREIGN KEY (class_id) REFERENCES Classes (class_id) ON DELETE CASCADE
 )
 
+GO
 CREATE TABLE ExamParts (
     exam_part_id UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID (),
     exam_id UNIQUEIDENTIFIER NOT NULL,
     part_name NVARCHAR (100) NOT NULL,
-    max_score INT NOT NULL,
-    passing_score INT NOT NULL,
+    max_score FLOAT NOT NULL,
+    passing_score FLOAT DEFAULT 0,
     weightage FLOAT NOT NULL,
     CONSTRAINT FK_ExamParts_Exams FOREIGN KEY (exam_id) REFERENCES Exams (exam_id) ON DELETE CASCADE
 ); 
@@ -198,311 +199,477 @@ CREATE TABLE Certificates (
     CONSTRAINT FK_Certificates_Courses FOREIGN KEY (course_id) REFERENCES Courses (course_id)
 );
 
+GO
+CREATE PROCEDURE sp_CreateExamWithParts
+    @exam_id UNIQUEIDENTIFIER,
+    @class_id UNIQUEIDENTIFIER,
+    @exam_date DATE,
+    @start_time VARCHAR(20), -- Hoặc kiểu TIME tùy DB của bạn
+    @end_time VARCHAR(20),
+    @room NVARCHAR(100),
+    @max_score FLOAT,
+    @passing_score FLOAT,
+    @weightage FLOAT,
+    @json_parts NVARCHAR(MAX) -- <--- Đây là chỗ chứa danh sách Parts
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- 1. Insert Exam (Cha)
+        INSERT INTO Exams (
+            exam_id, class_id, exam_date, start_time, end_time, 
+            room, max_score, passing_score, weightage
+        ) VALUES (
+            @exam_id, @class_id, @exam_date, @start_time, @end_time, 
+            @room, @max_score, @passing_score, @weightage
+        );
+
+        -- 2. Insert ExamParts (Con) từ chuỗi JSON
+        -- OPENJSON sẽ biến chuỗi JSON thành bảng để Insert
+        IF @json_parts IS NOT NULL AND LEN(@json_parts) > 0
+        BEGIN
+            INSERT INTO ExamParts (
+                exam_part_id, exam_id, part_name, max_score, passing_score, weightage
+            )
+            SELECT 
+                part_id, @exam_id, part_name, max_score, passing_score, weightage
+            FROM OPENJSON(@json_parts)
+            WITH (
+                part_id UNIQUEIDENTIFIER '$.exam_part_id',
+                part_name NVARCHAR(200) '$.part_name',
+                max_score FLOAT '$.max_score',
+                passing_score FLOAT '$.passing_score',
+                weightage FLOAT '$.weightage'
+            );
+        END
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        -- Ném lỗi ra để C# biết
+        THROW; 
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE sp_UpdateExamWithParts
+    @exam_id UNIQUEIDENTIFIER,
+    @class_id UNIQUEIDENTIFIER,
+    @exam_date DATE,
+    @start_time VARCHAR(20),
+    @end_time VARCHAR(20),
+    @room NVARCHAR(100),
+    @max_score FLOAT,
+    @passing_score FLOAT,
+    @weightage FLOAT,
+    @json_parts NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON; -- Vẫn giữ cái này để tối ưu performance
+    
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- 1. Cập nhật thông tin Exam (Cha)
+        UPDATE Exams
+        SET 
+            class_id = @class_id,
+            exam_date = @exam_date,
+            start_time = @start_time,
+            end_time = @end_time,
+            room = @room,
+            max_score = @max_score,
+            passing_score = @passing_score,
+            weightage = @weightage
+        WHERE exam_id = @exam_id;
+
+        -- 2. CHECK QUAN TRỌNG: Kiểm tra xem có dòng nào được update không?
+        IF @@ROWCOUNT = 0
+        BEGIN
+            -- Không tìm thấy ID để update -> Rollback và báo thất bại
+            ROLLBACK TRANSACTION;
+            SELECT 0; -- Trả về 0 (Thất bại/Không tìm thấy)
+            RETURN;
+        END
+
+        -- 3. Nếu tìm thấy thì mới làm tiếp: Xóa ExamParts cũ
+        DELETE FROM ExamParts WHERE exam_id = @exam_id;
+
+        -- 4. Insert ExamParts mới
+        IF @json_parts IS NOT NULL AND LEN(@json_parts) > 0
+        BEGIN
+            INSERT INTO ExamParts (
+                exam_part_id, exam_id, part_name, max_score, passing_score, weightage
+            )
+            SELECT 
+                part_id, @exam_id, part_name, max_score, passing_score, weightage
+            FROM OPENJSON(@json_parts)
+            WITH (
+                part_id UNIQUEIDENTIFIER '$.exam_part_id',
+                part_name NVARCHAR(200) '$.part_name',
+                max_score FLOAT '$.max_score',
+                passing_score FLOAT '$.passing_score',
+                weightage FLOAT '$.weightage'
+            );
+        END
+
+        COMMIT TRANSACTION;
+        SELECT 1; -- Trả về 1 (Thành công)
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+
+
 
 -- =============================================
 -- INSERT SAMPLE DATA FOR LANGUAGE LEARNING SYSTEM
 -- =============================================
 
--- 1. Languages
 INSERT INTO Languages (language_code, language_name, is_active) VALUES
 ('EN', N'English', 1),
-('VI', N'Vietnamese', 1),
+('FR', N'French', 1),
+('DE', N'German', 1),
 ('JP', N'Japanese', 1),
-('KR', N'Korean', 1),
-('CN', N'Chinese', 1);
+('KR', N'Korean', 1);
 
--- 2. Languages_Levels
+-- 2. INSERT Language Levels
 INSERT INTO Languages_Levels (language_code, level_name, level_order, description, is_active) VALUES
-('EN', N'Beginner A1', 1, N'Basic English for beginners', 1),
+-- English Levels
+('EN', N'Beginner A1', 1, N'Basic English for absolute beginners', 1),
 ('EN', N'Elementary A2', 2, N'Elementary level English', 1),
-('EN', N'Intermediate B1', 3, N'Intermediate English', 1),
-('EN', N'Upper Intermediate B2', 4, N'Upper intermediate English', 1),
+('EN', N'Intermediate B1', 3, N'Intermediate English skills', 1),
+('EN', N'Upper-Intermediate B2', 4, N'Advanced intermediate English', 1),
 ('EN', N'Advanced C1', 5, N'Advanced English proficiency', 1),
-('JP', N'N5 - Beginner', 1, N'JLPT N5 Level', 1),
-('JP', N'N4 - Elementary', 2, N'JLPT N4 Level', 1),
-('JP', N'N3 - Intermediate', 3, N'JLPT N3 Level', 1),
-('KR', N'TOPIK I Level 1', 1, N'Korean beginner level 1', 1),
-('KR', N'TOPIK I Level 2', 2, N'Korean beginner level 2', 1);
+-- French Levels
+('FR', N'Débutant A1', 1, N'French for beginners', 1),
+('FR', N'Élémentaire A2', 2, N'Elementary French', 1),
+('FR', N'Intermédiaire B1', 3, N'Intermediate French', 1),
+-- German Levels
+('DE', N'Anfänger A1', 1, N'German for beginners', 1),
+('DE', N'Grundlagen A2', 2, N'Elementary German', 1),
+-- Japanese Levels
+('JP', N'Beginner N5', 1, N'JLPT N5 Level', 1),
+('JP', N'Elementary N4', 2, N'JLPT N4 Level', 1),
+-- Korean Levels
+('KR', N'Beginner Level 1', 1, N'Basic Korean', 1),
+('KR', N'Elementary Level 2', 2, N'Elementary Korean', 1);
 
--- 3. Users (Admin, Teachers, Students)
-INSERT INTO Users (username, password_hash, email, phone, full_name, date_of_birth, gender, address, role, is_active) VALUES
+-- 3. INSERT Users (Admin, Teachers, Students)
 -- Admin
-('admin01', 'hash_admin_password', 'admin@languagecenter.com', '0901234567', N'Nguyễn Văn Admin', '1985-05-15', 'male', N'123 Lê Lợi, Q1, TP.HCM', 'admin', 1),
+INSERT INTO Users (username, password_hash, email, phone, full_name, date_of_birth, gender, address, role, is_active) VALUES
+('admin01', 'hashed_password_admin01', 'admin@languagecenter.com', '0901234567', N'Nguyễn Văn An', '1985-05-15', 'male', N'123 Trần Hưng Đạo, Hà Nội', 'admin', 1);
 
 -- Teachers
-('teacher01', 'hash_teacher1_pass', 'john.smith@languagecenter.com', '0912345678', N'John Smith', '1988-03-20', 'male', N'456 Nguyễn Huệ, Q1, TP.HCM', 'teacher', 1),
-('teacher02', 'hash_teacher2_pass', 'sarah.nguyen@languagecenter.com', '0923456789', N'Sarah Nguyễn', '1990-07-12', 'female', N'789 Trần Hưng Đạo, Q5, TP.HCM', 'teacher', 1),
-('teacher03', 'hash_teacher3_pass', 'tanaka.yuki@languagecenter.com', '0934567890', N'Tanaka Yuki', '1987-11-08', 'female', N'321 Võ Văn Tần, Q3, TP.HCM', 'teacher', 1),
-('teacher04', 'hash_teacher4_pass', 'kim.minji@languagecenter.com', '0945678901', N'Kim Min-ji', '1992-02-25', 'female', N'654 Pasteur, Q1, TP.HCM', 'teacher', 1),
+INSERT INTO Users (username, password_hash, email, phone, full_name, date_of_birth, gender, address, role, avatar_url, is_active) VALUES
+('teacher01', 'hashed_password_teacher01', 'john.smith@languagecenter.com', '0912345678', N'John Smith', '1988-03-20', 'male', N'45 Lê Lợi, Hà Nội', 'teacher', 'https://example.com/avatars/john.jpg', 1),
+('teacher02', 'hashed_password_teacher02', 'marie.dubois@languagecenter.com', '0923456789', N'Marie Dubois', '1990-07-12', 'female', N'67 Nguyễn Huệ, Hà Nội', 'teacher', 'https://example.com/avatars/marie.jpg', 1),
+('teacher03', 'hashed_password_teacher03', 'hans.mueller@languagecenter.com', '0934567890', N'Hans Mueller', '1987-11-25', 'male', N'89 Hai Bà Trưng, Hà Nội', 'teacher', 'https://example.com/avatars/hans.jpg', 1),
+('teacher04', 'hashed_password_teacher04', 'yuki.tanaka@languagecenter.com', '0945678901', N'Yuki Tanaka', '1992-04-08', 'female', N'12 Lý Thường Kiệt, Hà Nội', 'teacher', 'https://example.com/avatars/yuki.jpg', 1),
+('teacher05', 'hashed_password_teacher05', 'kim.minsoo@languagecenter.com', '0956789012', N'Kim Min-soo', '1989-09-30', 'male', N'34 Láng Hạ, Hà Nội', 'teacher', 'https://example.com/avatars/kim.jpg', 1);
 
 -- Students
-('student01', 'hash_student1_pass', 'nguyenvana@email.com', '0956789012', N'Nguyễn Văn A', '2000-01-15', 'male', N'12 Lý Thường Kiệt, Q10, TP.HCM', 'student', 1),
-('student02', 'hash_student2_pass', 'tranthib@email.com', '0967890123', N'Trần Thị B', '2001-05-20', 'female', N'34 Hai Bà Trưng, Q3, TP.HCM', 'student', 1),
-('student03', 'hash_student3_pass', 'lequangc@email.com', '0978901234', N'Lê Quang C', '1999-08-10', 'male', N'56 Nguyễn Thị Minh Khai, Q1, TP.HCM', 'student', 1),
-('student04', 'hash_student4_pass', 'phamthid@email.com', '0989012345', N'Phạm Thị D', '2002-03-25', 'female', N'78 Điện Biên Phủ, Bình Thạnh, TP.HCM', 'student', 1),
-('student05', 'hash_student5_pass', 'hoangvane@email.com', '0990123456', N'Hoàng Văn E', '2000-12-05', 'male', N'90 Cách Mạng Tháng 8, Q3, TP.HCM', 'student', 1),
-('student06', 'hash_student6_pass', 'vuthif@email.com', '0901234568', N'Vũ Thị F', '2001-09-18', 'female', N'111 Lê Văn Sỹ, Q3, TP.HCM', 'student', 1),
-('student07', 'hash_student7_pass', 'doanvang@email.com', '0912345679', N'Đoàn Văn G', '1998-06-30', 'male', N'222 Hoàng Văn Thụ, Tân Bình, TP.HCM', 'student', 1),
-('student08', 'hash_student8_pass', 'buithih@email.com', '0923456780', N'Bùi Thị H', '2003-04-12', 'female', N'333 Phạm Văn Đồng, Thủ Đức, TP.HCM', 'student', 1);
+INSERT INTO Users (username, password_hash, email, phone, full_name, date_of_birth, gender, address, role, avatar_url, is_active) VALUES
+('student01', 'hashed_password_student01', 'nguyen.van.a@gmail.com', '0967890123', N'Nguyễn Văn A', '2000-01-15', 'male', N'56 Giảng Võ, Hà Nội', 'student', 'https://example.com/avatars/student01.jpg', 1),
+('student02', 'hashed_password_student02', 'tran.thi.b@gmail.com', '0978901234', N'Trần Thị B', '2001-05-22', 'female', N'78 Đê La Thành, Hà Nội', 'student', 'https://example.com/avatars/student02.jpg', 1),
+('student03', 'hashed_password_student03', 'le.van.c@gmail.com', '0989012345', N'Lê Văn C', '1999-08-10', 'male', N'90 Nguyễn Chí Thanh, Hà Nội', 'student', 'https://example.com/avatars/student03.jpg', 1),
+('student04', 'hashed_password_student04', 'pham.thi.d@gmail.com', '0990123456', N'Phạm Thị D', '2002-03-18', 'female', N'12 Cầu Giấy, Hà Nội', 'student', 'https://example.com/avatars/student04.jpg', 1),
+('student05', 'hashed_password_student05', 'hoang.van.e@gmail.com', '0901234568', N'Hoàng Văn E', '2000-11-05', 'male', N'34 Xã Đàn, Hà Nội', 'student', 'https://example.com/avatars/student05.jpg', 1),
+('student06', 'hashed_password_student06', 'vu.thi.f@gmail.com', '0912345679', N'Vũ Thị F', '2001-07-28', 'female', N'56 Thái Hà, Hà Nội', 'student', 'https://example.com/avatars/student06.jpg', 1),
+('student07', 'hashed_password_student07', 'do.van.g@gmail.com', '0923456780', N'Đỗ Văn G', '1998-12-14', 'male', N'78 Phố Huế, Hà Nội', 'student', 'https://example.com/avatars/student07.jpg', 1),
+('student08', 'hashed_password_student08', 'bui.thi.h@gmail.com', '0934567891', N'Bùi Thị H', '2002-06-20', 'female', N'90 Tây Sơn, Hà Nội', 'student', 'https://example.com/avatars/student08.jpg', 1),
+('student09', 'hashed_password_student09', 'dinh.van.i@gmail.com', '0945678902', N'Đinh Văn I', '2000-09-09', 'male', N'12 Chùa Bộc, Hà Nội', 'student', 'https://example.com/avatars/student09.jpg', 1),
+('student10', 'hashed_password_student10', 'ngo.thi.k@gmail.com', '0956789013', N'Ngô Thị K', '2001-02-25', 'female', N'34 Khâm Thiên, Hà Nội', 'student', 'https://example.com/avatars/student10.jpg', 1);
 
--- 4. Teacher
-DECLARE @teacher1_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'teacher01');
-DECLARE @teacher2_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'teacher02');
-DECLARE @teacher3_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'teacher03');
-DECLARE @teacher4_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'teacher04');
+-- 4. INSERT Teachers (linked to Users)
+INSERT INTO Teacher (user_id, specialization, years_of_experience, qualifications, bio, is_active)
+SELECT u.user_id, N'English Language Teaching', 8, N'TESOL, CELTA Certified', N'Experienced English teacher specializing in business English and IELTS preparation', 1
+FROM Users u WHERE u.username = 'teacher01'
+UNION ALL
+SELECT u.user_id, N'French Language Teaching', 6, N'DELF/DALF Examiner, MA in French', N'Native French speaker with expertise in French culture and literature', 1
+FROM Users u WHERE u.username = 'teacher02'
+UNION ALL
+SELECT u.user_id, N'German Language Teaching', 7, N'Goethe-Institut Certified', N'German language expert focusing on business German', 1
+FROM Users u WHERE u.username = 'teacher03'
+UNION ALL
+SELECT u.user_id, N'Japanese Language Teaching', 5, N'JLPT N1, Teaching Certification', N'Japanese native speaker specializing in JLPT preparation', 1
+FROM Users u WHERE u.username = 'teacher04'
+UNION ALL
+SELECT u.user_id, N'Korean Language Teaching', 4, N'TOPIK Level 6, MA in Korean Studies', N'Korean language and culture specialist', 1
+FROM Users u WHERE u.username = 'teacher05';
 
-INSERT INTO Teacher (user_id, specialization, years_of_experience, qualifications, bio, is_active) VALUES
-(@teacher1_user_id, N'English Communication', 8, N'TESOL Certificate, MA in Applied Linguistics', N'Experienced English teacher with focus on business communication', 1),
-(@teacher2_user_id, N'English Grammar & Writing', 6, N'CELTA, BA in English Literature', N'Passionate about teaching English grammar and academic writing', 1),
-(@teacher3_user_id, N'Japanese Language & Culture', 10, N'JLPT N1, MA in Japanese Studies', N'Native Japanese speaker with extensive teaching experience', 1),
-(@teacher4_user_id, N'Korean Language', 5, N'TOPIK Level 6, BA in Korean Language Education', N'Korean language specialist focusing on conversational skills', 1);
+-- 5. INSERT Students (linked to Users)
+INSERT INTO Students (user_id, is_active)
+SELECT user_id, 1 FROM Users WHERE role = 'student';
 
--- 5. Students
-DECLARE @student1_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student01');
-DECLARE @student2_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student02');
-DECLARE @student3_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student03');
-DECLARE @student4_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student04');
-DECLARE @student5_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student05');
-DECLARE @student6_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student06');
-DECLARE @student7_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student07');
-DECLARE @student8_user_id UNIQUEIDENTIFIER = (SELECT user_id FROM Users WHERE username = 'student08');
+-- 6. INSERT Courses
+DECLARE @EnglishA1 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'EN' AND level_order = 1);
+DECLARE @EnglishA2 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'EN' AND level_order = 2);
+DECLARE @EnglishB1 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'EN' AND level_order = 3);
+DECLARE @FrenchA1 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'FR' AND level_order = 1);
+DECLARE @GermanA1 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'DE' AND level_order = 1);
+DECLARE @JapaneseN5 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'JP' AND level_order = 1);
+DECLARE @KoreanL1 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'KR' AND level_order = 1);
 
-INSERT INTO Students (user_id, is_active) VALUES
-(@student1_user_id, 1),
-(@student2_user_id, 1),
-(@student3_user_id, 1),
-(@student4_user_id, 1),
-(@student5_user_id, 1),
-(@student6_user_id, 1),
-(@student7_user_id, 1),
-(@student8_user_id, 1);
+INSERT INTO Courses (course_name, language_level_id, description, duration_hours, fee, thumbnail_url, course_status) VALUES
+(N'English for Beginners - A1', @EnglishA1, N'Complete beginner English course covering basics of grammar, vocabulary, and conversation', 60, 3000000, 'https://example.com/courses/english-a1.jpg', 'active'),
+(N'Elementary English - A2', @EnglishA2, N'Build on your English foundation with expanded vocabulary and grammar structures', 60, 3200000, 'https://example.com/courses/english-a2.jpg', 'active'),
+(N'Intermediate English - B1', @EnglishB1, N'Develop fluency and confidence in everyday English communication', 80, 4000000, 'https://example.com/courses/english-b1.jpg', 'active'),
+(N'French Basics - A1', @FrenchA1, N'Introduction to French language and culture for complete beginners', 60, 3500000, 'https://example.com/courses/french-a1.jpg', 'active'),
+(N'German for Beginners - A1', @GermanA1, N'Start your journey in learning German language', 60, 3500000, 'https://example.com/courses/german-a1.jpg', 'active'),
+(N'Japanese N5 - Beginner', @JapaneseN5, N'JLPT N5 preparation course with Hiragana, Katakana, and basic Kanji', 70, 4000000, 'https://example.com/courses/japanese-n5.jpg', 'active'),
+(N'Korean Level 1', @KoreanL1, N'Learn Korean alphabet (Hangul) and basic conversation', 60, 3800000, 'https://example.com/courses/korean-l1.jpg', 'active');
 
--- 6. Courses
-DECLARE @en_a1_level UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'EN' AND level_order = 1);
-DECLARE @en_a2_level UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'EN' AND level_order = 2);
-DECLARE @en_b1_level UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'EN' AND level_order = 3);
-DECLARE @jp_n5_level UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'JP' AND level_order = 1);
-DECLARE @kr_t1_level UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'KR' AND level_order = 1);
+-- 7. INSERT Classes
+DECLARE @Teacher1 UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = (SELECT user_id FROM Users WHERE username = 'teacher01'));
+DECLARE @Teacher2 UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = (SELECT user_id FROM Users WHERE username = 'teacher02'));
+DECLARE @Teacher3 UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = (SELECT user_id FROM Users WHERE username = 'teacher03'));
+DECLARE @Teacher4 UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = (SELECT user_id FROM Users WHERE username = 'teacher04'));
+DECLARE @Teacher5 UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = (SELECT user_id FROM Users WHERE username = 'teacher05'));
 
-INSERT INTO Courses (course_name, language_level_id, description, duration_hours, fee, course_status) VALUES
-(N'English for Beginners A1', @en_a1_level, N'Basic English course for absolute beginners', 60, 3000000, 'active'),
-(N'English Elementary A2', @en_a2_level, N'Elementary English with focus on daily communication', 80, 3500000, 'active'),
-(N'English Intermediate B1', @en_b1_level, N'Intermediate English for work and study', 100, 4500000, 'active'),
-(N'Japanese N5 Foundation', @jp_n5_level, N'JLPT N5 preparation course', 90, 5000000, 'active'),
-(N'Korean TOPIK I Level 1', @kr_t1_level, N'Korean language basics for beginners', 70, 4000000, 'active');
-
--- 7. Classes
-DECLARE @course1_id UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Beginners A1%');
-DECLARE @course2_id UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Elementary A2%');
-DECLARE @course3_id UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Intermediate B1%');
-DECLARE @course4_id UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Japanese N5%');
-DECLARE @course5_id UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Korean TOPIK%');
-
-DECLARE @teacher1_id UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = @teacher1_user_id);
-DECLARE @teacher2_id UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = @teacher2_user_id);
-DECLARE @teacher3_id UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = @teacher3_user_id);
-DECLARE @teacher4_id UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = @teacher4_user_id);
+DECLARE @CourseEN_A1 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%English for Beginners%');
+DECLARE @CourseEN_A2 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Elementary English%');
+DECLARE @CourseEN_B1 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Intermediate English%');
+DECLARE @CourseFR_A1 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%French Basics%');
+DECLARE @CourseDE_A1 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%German for Beginners%');
+DECLARE @CourseJP_N5 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Japanese N5%');
+DECLARE @CourseKR_L1 UNIQUEIDENTIFIER = (SELECT TOP 1 course_id FROM Courses WHERE course_name LIKE N'%Korean Level 1%');
 
 INSERT INTO Classes (course_id, teacher_id, class_name, start_date, end_date, max_students, class_status) VALUES
-(@course1_id, @teacher1_id, N'ENG-A1-2024-01', '2024-01-15', '2024-04-15', 20, 'completed'),
-(@course1_id, @teacher1_id, N'ENG-A1-2024-02', '2024-09-01', '2024-12-01', 20, 'ongoing'),
-(@course2_id, @teacher2_id, N'ENG-A2-2024-01', '2024-02-01', '2024-06-01', 18, 'completed'),
-(@course3_id, @teacher2_id, N'ENG-B1-2024-01', '2024-10-01', '2025-02-28', 15, 'ongoing'),
-(@course4_id, @teacher3_id, N'JPN-N5-2024-01', '2024-03-01', '2024-07-31', 15, 'completed'),
-(@course5_id, @teacher4_id, N'KOR-T1-2024-01', '2024-11-01', '2025-02-15', 12, 'ongoing');
+(@CourseEN_A1, @Teacher1, N'English A1 - Morning Class', '2024-01-15', '2024-04-15', 20, 'completed'),
+(@CourseEN_A1, @Teacher1, N'English A1 - Evening Class', '2024-09-01', '2024-12-01', 20, 'ongoing'),
+(@CourseEN_A2, @Teacher1, N'English A2 - Intensive', '2024-10-01', '2025-01-15', 18, 'ongoing'),
+(@CourseEN_B1, @Teacher1, N'English B1 - Weekend', '2025-01-10', '2025-05-10', 15, 'scheduled'),
+(@CourseFR_A1, @Teacher2, N'French A1 - Beginners', '2024-09-15', '2024-12-15', 15, 'ongoing'),
+(@CourseDE_A1, @Teacher3, N'German A1 - Morning', '2024-10-01', '2025-01-10', 12, 'ongoing'),
+(@CourseJP_N5, @Teacher4, N'Japanese N5 - Evening', '2024-08-15', '2024-11-30', 15, 'completed'),
+(@CourseJP_N5, @Teacher4, N'Japanese N5 - Winter', '2025-01-05', '2025-04-20', 15, 'scheduled'),
+(@CourseKR_L1, @Teacher5, N'Korean L1 - Afternoon', '2024-09-20', '2024-12-20', 18, 'ongoing');
 
--- 8. Enrollments
-DECLARE @class1_id UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name = N'ENG-A1-2024-01');
-DECLARE @class2_id UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name = N'ENG-A1-2024-02');
-DECLARE @class3_id UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name = N'ENG-A2-2024-01');
-DECLARE @class4_id UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name = N'ENG-B1-2024-01');
-DECLARE @class5_id UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name = N'JPN-N5-2024-01');
-DECLARE @class6_id UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name = N'KOR-T1-2024-01');
+-- 8. INSERT Enrollments
+DECLARE @Student1 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student01'));
+DECLARE @Student2 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student02'));
+DECLARE @Student3 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student03'));
+DECLARE @Student4 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student04'));
+DECLARE @Student5 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student05'));
+DECLARE @Student6 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student06'));
+DECLARE @Student7 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student07'));
+DECLARE @Student8 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student08'));
+DECLARE @Student9 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student09'));
+DECLARE @Student10 UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = (SELECT user_id FROM Users WHERE username = 'student10'));
 
-DECLARE @student1_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student1_user_id);
-DECLARE @student2_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student2_user_id);
-DECLARE @student3_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student3_user_id);
-DECLARE @student4_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student4_user_id);
-DECLARE @student5_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student5_user_id);
-DECLARE @student6_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student6_user_id);
-DECLARE @student7_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student7_user_id);
-DECLARE @student8_id UNIQUEIDENTIFIER = (SELECT student_id FROM Students WHERE user_id = @student8_user_id);
+DECLARE @Class1 UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name LIKE N'%English A1 - Morning%');
+DECLARE @Class2 UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name LIKE N'%English A1 - Evening%');
+DECLARE @Class3 UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name LIKE N'%English A2 - Intensive%');
+DECLARE @Class5 UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name LIKE N'%French A1%');
+DECLARE @Class7 UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name LIKE N'%Japanese N5 - Evening%');
+DECLARE @Class9 UNIQUEIDENTIFIER = (SELECT TOP 1 class_id FROM Classes WHERE class_name LIKE N'%Korean L1%');
 
 INSERT INTO Enrollments (student_id, class_id, enrollment_date, enrollment_status) VALUES
--- Class 1: ENG-A1-2024-01 (completed)
-(@student1_id, @class1_id, '2024-01-10', 'completed'),
-(@student2_id, @class1_id, '2024-01-10', 'completed'),
-(@student3_id, @class1_id, '2024-01-12', 'completed'),
+-- Class 1 - Completed
+(@Student1, @Class1, '2024-01-05', 'completed'),
+(@Student2, @Class1, '2024-01-06', 'completed'),
+(@Student3, @Class1, '2024-01-07', 'completed'),
+-- Class 2 - Ongoing
+(@Student4, @Class2, '2024-08-25', 'active'),
+(@Student5, @Class2, '2024-08-26', 'active'),
+(@Student6, @Class2, '2024-08-27', 'active'),
+(@Student7, @Class2, '2024-08-28', 'active'),
+-- Class 3 - Ongoing
+(@Student8, @Class3, '2024-09-20', 'active'),
+(@Student9, @Class3, '2024-09-21', 'active'),
+-- Class 5 - French
+(@Student10, @Class5, '2024-09-10', 'active'),
+(@Student1, @Class5, '2024-09-11', 'active'),
+-- Class 7 - Japanese Completed
+(@Student2, @Class7, '2024-08-10', 'completed'),
+(@Student3, @Class7, '2024-08-11', 'completed'),
+(@Student4, @Class7, '2024-08-12', 'completed'),
+-- Class 9 - Korean
+(@Student5, @Class9, '2024-09-15', 'active'),
+(@Student6, @Class9, '2024-09-16', 'active');
 
--- Class 2: ENG-A1-2024-02 (ongoing)
-(@student4_id, @class2_id, '2024-08-25', 'active'),
-(@student5_id, @class2_id, '2024-08-26', 'active'),
-(@student6_id, @class2_id, '2024-08-28', 'active'),
+-- 9. INSERT Invoices
+INSERT INTO Invoices (enrollment_id, amount, issue_date, due_date, payment_date, invoice_status)
+SELECT 
+    e.enrollment_id,
+    c.fee,
+    e.enrollment_date,
+    DATEADD(DAY, 7, e.enrollment_date) AS due_date,
+    CASE 
+        WHEN e.enrollment_status = 'completed' THEN DATEADD(DAY, 2, e.enrollment_date)
+        WHEN e.enrollment_status = 'active' AND DATEDIFF(DAY, e.enrollment_date, GETDATE()) > 3 THEN DATEADD(DAY, 3, e.enrollment_date)
+        ELSE NULL
+    END AS payment_date,
+    CASE 
+        WHEN e.enrollment_status = 'completed' THEN 'paid'
+        WHEN e.enrollment_status = 'active' AND DATEDIFF(DAY, e.enrollment_date, GETDATE()) > 3 THEN 'paid'
+        WHEN DATEADD(DAY, 7, e.enrollment_date) < GETDATE() THEN 'overdue'
+        ELSE 'unpaid'
+    END AS invoice_status
+FROM Enrollments e
+JOIN Classes cl ON e.class_id = cl.class_id
+JOIN Courses c ON cl.course_id = c.course_id;
 
--- Class 3: ENG-A2-2024-01 (completed)
-(@student1_id, @class3_id, '2024-01-28', 'completed'),
-(@student7_id, @class3_id, '2024-01-29', 'completed'),
-
--- Class 4: ENG-B1-2024-01 (ongoing)
-(@student2_id, @class4_id, '2024-09-25', 'active'),
-(@student8_id, @class4_id, '2024-09-26', 'active'),
-
--- Class 5: JPN-N5-2024-01 (completed)
-(@student3_id, @class5_id, '2024-02-25', 'completed'),
-(@student4_id, @class5_id, '2024-02-26', 'completed'),
-
--- Class 6: KOR-T1-2024-01 (ongoing)
-(@student5_id, @class6_id, '2024-10-28', 'active'),
-(@student6_id, @class6_id, '2024-10-29', 'active');
-
--- 9. Invoices
-DECLARE @enroll1_id UNIQUEIDENTIFIER = (SELECT TOP 1 enrollment_id FROM Enrollments WHERE student_id = @student1_id AND class_id = @class1_id);
-DECLARE @enroll2_id UNIQUEIDENTIFIER = (SELECT TOP 1 enrollment_id FROM Enrollments WHERE student_id = @student2_id AND class_id = @class1_id);
-DECLARE @enroll3_id UNIQUEIDENTIFIER = (SELECT TOP 1 enrollment_id FROM Enrollments WHERE student_id = @student3_id AND class_id = @class1_id);
-DECLARE @enroll4_id UNIQUEIDENTIFIER = (SELECT TOP 1 enrollment_id FROM Enrollments WHERE student_id = @student4_id AND class_id = @class2_id);
-DECLARE @enroll5_id UNIQUEIDENTIFIER = (SELECT TOP 1 enrollment_id FROM Enrollments WHERE student_id = @student5_id AND class_id = @class2_id);
-
-INSERT INTO Invoices (enrollment_id, amount, issue_date, due_date, payment_date, invoice_status) VALUES
-(@enroll1_id, 3000000, '2024-01-10', '2024-01-20', '2024-01-15', 'paid'),
-(@enroll2_id, 3000000, '2024-01-10', '2024-01-20', '2024-01-18', 'paid'),
-(@enroll3_id, 3000000, '2024-01-12', '2024-01-22', '2024-01-20', 'paid'),
-(@enroll4_id, 3000000, '2024-08-25', '2024-09-05', '2024-08-30', 'paid'),
-(@enroll5_id, 3000000, '2024-08-26', '2024-09-06', NULL, 'unpaid');
-
--- 10. Schedules
+-- 10. INSERT Schedules (for ongoing and completed classes)
 INSERT INTO Schedules (class_id, study_date, start_time, end_time, room) VALUES
--- Class 1: ENG-A1-2024-01 (completed - sample dates)
-(@class1_id, '2024-01-15', '18:00', '20:00', N'Room 101'),
-(@class1_id, '2024-01-17', '18:00', '20:00', N'Room 101'),
-(@class1_id, '2024-01-22', '18:00', '20:00', N'Room 101'),
+-- Class 2 - English A1 Evening (ongoing: Sept 1 - Dec 1)
+(@Class2, '2024-09-02', '18:00:00', '20:00:00', N'Room 101'),
+(@Class2, '2024-09-04', '18:00:00', '20:00:00', N'Room 101'),
+(@Class2, '2024-09-09', '18:00:00', '20:00:00', N'Room 101'),
+(@Class2, '2024-09-11', '18:00:00', '20:00:00', N'Room 101'),
+(@Class2, '2024-09-16', '18:00:00', '20:00:00', N'Room 101'),
+-- Class 3 - English A2 Intensive (ongoing: Oct 1 - Jan 15)
+(@Class3, '2024-10-02', '09:00:00', '12:00:00', N'Room 202'),
+(@Class3, '2024-10-04', '09:00:00', '12:00:00', N'Room 202'),
+(@Class3, '2024-10-07', '09:00:00', '12:00:00', N'Room 202'),
+(@Class3, '2024-10-09', '09:00:00', '12:00:00', N'Room 202'),
+-- Class 5 - French A1 (ongoing: Sept 15 - Dec 15)
+(@Class5, '2024-09-17', '14:00:00', '16:00:00', N'Room 301'),
+(@Class5, '2024-09-19', '14:00:00', '16:00:00', N'Room 301'),
+(@Class5, '2024-09-24', '14:00:00', '16:00:00', N'Room 301'),
+-- Class 7 - Japanese N5 Evening (completed: Aug 15 - Nov 30)
+(@Class7, '2024-08-16', '18:30:00', '20:30:00', N'Room 401'),
+(@Class7, '2024-08-19', '18:30:00', '20:30:00', N'Room 401'),
+(@Class7, '2024-08-21', '18:30:00', '20:30:00', N'Room 401'),
+(@Class7, '2024-08-26', '18:30:00', '20:30:00', N'Room 401');
 
--- Class 2: ENG-A1-2024-02 (ongoing)
-(@class2_id, '2024-09-02', '18:00', '20:00', N'Room 102'),
-(@class2_id, '2024-09-04', '18:00', '20:00', N'Room 102'),
-(@class2_id, '2024-09-09', '18:00', '20:00', N'Room 102'),
-(@class2_id, '2024-12-23', '18:00', '20:00', N'Room 102'),
-(@class2_id, '2024-12-25', '18:00', '20:00', N'Room 102'),
+-- 11. INSERT Attendance
+INSERT INTO Attendance (schedule_id, student_id, attendance_status)
+SELECT 
+    s.schedule_id,
+    e.student_id,
+    CASE 
+        WHEN ABS(CHECKSUM(NEWID())) % 10 < 8 THEN 'present'
+        WHEN ABS(CHECKSUM(NEWID())) % 10 = 8 THEN 'late'
+        ELSE 'absent'
+    END AS attendance_status
+FROM Schedules s
+JOIN Classes cl ON s.class_id = cl.class_id
+JOIN Enrollments e ON cl.class_id = e.class_id
+WHERE cl.class_status IN ('ongoing', 'completed');
 
--- Class 4: ENG-B1-2024-01 (ongoing)
-(@class4_id, '2024-10-02', '19:00', '21:00', N'Room 201'),
-(@class4_id, '2024-10-07', '19:00', '21:00', N'Room 201');
+-- 12. INSERT Exams
+INSERT INTO Exams (class_id, exam_date, start_time, end_time, room, max_score, passing_score, weightage) VALUES
+-- Midterm Exam for Class 2
+(@Class2, '2024-10-15', '18:00:00', '20:00:00', N'Room 101', 100, 50, 0.3),
+-- Final Exam for Class 7 (completed)
+(@Class7, '2024-11-28', '18:30:00', '21:00:00', N'Room 401', 100, 60, 0.7),
+-- Midterm for Class 3
+(@Class3, '2024-11-10', '09:00:00', '11:00:00', N'Room 202', 100, 50, 0.3);
 
--- 11. Attendance
-DECLARE @schedule1_id UNIQUEIDENTIFIER = (SELECT TOP 1 schedule_id FROM Schedules WHERE class_id = @class1_id AND study_date = '2024-01-15');
-DECLARE @schedule2_id UNIQUEIDENTIFIER = (SELECT TOP 1 schedule_id FROM Schedules WHERE class_id = @class1_id AND study_date = '2024-01-17');
-DECLARE @schedule3_id UNIQUEIDENTIFIER = (SELECT TOP 1 schedule_id FROM Schedules WHERE class_id = @class2_id AND study_date = '2024-09-02');
-
-INSERT INTO Attendance (schedule_id, student_id, attendance_status) VALUES
--- Schedule 1
-(@schedule1_id, @student1_id, 'present'),
-(@schedule1_id, @student2_id, 'present'),
-(@schedule1_id, @student3_id, 'late'),
-
--- Schedule 2
-(@schedule2_id, @student1_id, 'present'),
-(@schedule2_id, @student2_id, 'absent'),
-(@schedule2_id, @student3_id, 'present'),
-
--- Schedule 3
-(@schedule3_id, @student4_id, 'present'),
-(@schedule3_id, @student5_id, 'present'),
-(@schedule3_id, @student6_id, 'permittedAbsence');
-
--- 12. Exams
-INSERT INTO Exams (class_id, exam_date, start_time, end_time, room, max_score, passing_score) VALUES
--- Midterm exam for completed class
-(@class1_id, '2024-02-20', '09:00', '11:00', N'Exam Room A', 100, 50),
--- Final exam for completed class
-(@class1_id, '2024-04-10', '09:00', '11:30', N'Exam Room A', 100, 50),
--- Midterm for ongoing class
-(@class2_id, '2024-10-15', '09:00', '11:00', N'Exam Room B', 100, 50);
-
--- 13. ExamParts
-DECLARE @exam1_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_id FROM Exams WHERE class_id = @class1_id AND exam_date = '2024-02-20');
-DECLARE @exam2_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_id FROM Exams WHERE class_id = @class1_id AND exam_date = '2024-04-10');
-DECLARE @exam3_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_id FROM Exams WHERE class_id = @class2_id AND exam_date = '2024-10-15');
+-- 13. INSERT Exam Parts
+DECLARE @Exam1 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_id FROM Exams WHERE class_id = @Class2);
+DECLARE @Exam2 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_id FROM Exams WHERE class_id = @Class7);
+DECLARE @Exam3 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_id FROM Exams WHERE class_id = @Class3);
 
 INSERT INTO ExamParts (exam_id, part_name, max_score, passing_score, weightage) VALUES
--- Exam 1: Midterm
-(@exam1_id, N'Listening', 25, 12, 0.25),
-(@exam1_id, N'Reading', 25, 12, 0.25),
-(@exam1_id, N'Writing', 25, 12, 0.25),
-(@exam1_id, N'Speaking', 25, 12, 0.25),
+-- Exam 1 Parts (Class 2 Midterm)
+(@Exam1, N'Listening', 25, 12.5, 0.25),
+(@Exam1, N'Reading', 25, 12.5, 0.25),
+(@Exam1, N'Writing', 25, 12.5, 0.25),
+(@Exam1, N'Speaking', 25, 12.5, 0.25),
+-- Exam 2 Parts (Class 7 Final - Japanese)
+(@Exam2, N'Vocabulary', 20, 12, 0.2),
+(@Exam2, N'Grammar', 30, 18, 0.3),
+(@Exam2, N'Reading', 30, 18, 0.3),
+(@Exam2, N'Listening', 20, 12, 0.2),
+-- Exam 3 Parts (Class 3 Midterm)
+(@Exam3, N'Listening', 30, 15, 0.3),
+(@Exam3, N'Reading & Use of English', 40, 20, 0.4),
+(@Exam3, N'Writing', 30, 15, 0.3);
 
--- Exam 2: Final
-(@exam2_id, N'Listening', 30, 15, 0.30),
-(@exam2_id, N'Reading', 30, 15, 0.30),
-(@exam2_id, N'Writing', 20, 10, 0.20),
-(@exam2_id, N'Speaking', 20, 10, 0.20),
+-- 14. INSERT Exam Results (for completed exams)
+INSERT INTO ExamResults (exam_id, student_id, score)
+SELECT @Exam2, e.student_id, 
+    CASE 
+        WHEN e.student_id = @Student2 THEN 78
+        WHEN e.student_id = @Student3 THEN 85
+        WHEN e.student_id = @Student4 THEN 72
+        ELSE 75
+    END AS score
+FROM Enrollments e
+WHERE e.class_id = @Class7;
 
--- Exam 3: Midterm ongoing
-(@exam3_id, N'Listening', 25, 12, 0.25),
-(@exam3_id, N'Reading', 25, 12, 0.25),
-(@exam3_id, N'Writing', 25, 12, 0.25),
-(@exam3_id, N'Speaking', 25, 12, 0.25);
+-- 15. INSERT Exam Part Results
+DECLARE @ExamResult1 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_result_id FROM ExamResults WHERE student_id = @Student2 AND exam_id = @Exam2);
+DECLARE @ExamResult2 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_result_id FROM ExamResults WHERE student_id = @Student3 AND exam_id = @Exam2);
+DECLARE @ExamResult3 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_result_id FROM ExamResults WHERE student_id = @Student4 AND exam_id = @Exam2);
 
--- 14. ExamResults
-INSERT INTO ExamResults (exam_id, student_id, score) VALUES
--- Exam 1 results
-(@exam1_id, @student1_id, 75),
-(@exam1_id, @student2_id, 82),
-(@exam1_id, @student3_id, 68),
-
--- Exam 2 results
-(@exam2_id, @student1_id, 85),
-(@exam2_id, @student2_id, 78),
-(@exam2_id, @student3_id, 72);
-
--- 15. ExamPartResults
-DECLARE @examres1_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_result_id FROM ExamResults WHERE exam_id = @exam1_id AND student_id = @student1_id);
-DECLARE @examres2_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_result_id FROM ExamResults WHERE exam_id = @exam1_id AND student_id = @student2_id);
-DECLARE @examres3_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_result_id FROM ExamResults WHERE exam_id = @exam1_id AND student_id = @student3_id);
-
-DECLARE @exampart1_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @exam1_id AND part_name = N'Listening');
-DECLARE @exampart2_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @exam1_id AND part_name = N'Reading');
-DECLARE @exampart3_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @exam1_id AND part_name = N'Writing');
-DECLARE @exampart4_id UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @exam1_id AND part_name = N'Speaking');
+DECLARE @Part1 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @Exam2 AND part_name = N'Vocabulary');
+DECLARE @Part2 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @Exam2 AND part_name = N'Grammar');
+DECLARE @Part3 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @Exam2 AND part_name = N'Reading');
+DECLARE @Part4 UNIQUEIDENTIFIER = (SELECT TOP 1 exam_part_id FROM ExamParts WHERE exam_id = @Exam2 AND part_name = N'Listening');
 
 INSERT INTO ExamPartResults (exam_part_id, exam_result_id, score) VALUES
--- Student 1 (Total: 75)
-(@exampart1_id, @examres1_id, 20),
-(@exampart2_id, @examres1_id, 18),
-(@exampart3_id, @examres1_id, 19),
-(@exampart4_id, @examres1_id, 18),
+-- Student 2 scores (Total: 78)
+(@Part1, @ExamResult1, 16.0),
+(@Part2, @ExamResult1, 24.0),
+(@Part3, @ExamResult1, 23.0),
+(@Part4, @ExamResult1, 15.0),
+-- Student 3 scores (Total: 85)
+(@Part2, @ExamResult2, 18.0),
+(@Part2, @ExamResult2, 27.0),
+(@Part3, @ExamResult2, 25.0),
+(@Part4, @ExamResult2, 15.0),
+-- Student 4 scores (Total: 72)
+(@Part1, @ExamResult3, 14.0),
+(@Part2, @ExamResult3, 22.0),
+(@Part3, @ExamResult3, 21.0),
+(@Part4, @ExamResult3, 15.0);
 
--- Student 2 (Total: 82)
-(@exampart1_id, @examres2_id, 22),
-(@exampart2_id, @examres2_id, 20),
-(@exampart3_id, @examres2_id, 21),
-(@exampart4_id, @examres2_id, 19),
+-- 16. INSERT Certificates (for completed courses with good results)
+INSERT INTO Certificates (student_id, course_id, issue_date, certificate_url, certificate_status)
+SELECT 
+    e.student_id,
+    cl.course_id,
+    DATEADD(DAY, 7, cl.end_date) AS issue_date,
+    CONCAT('https://example.com/certificates/', LOWER(REPLACE(CAST(e.student_id AS NVARCHAR(36)), '-', '')), '.pdf') AS certificate_url,
+    'issued' AS certificate_status
+FROM Enrollments e
+JOIN Classes cl ON e.class_id = cl.class_id
+WHERE e.enrollment_status = 'completed'
+AND cl.class_status = 'completed';
 
--- Student 3 (Total: 68)
-(@exampart1_id, @examres3_id, 17),
-(@exampart2_id, @examres3_id, 16),
-(@exampart3_id, @examres3_id, 18),
-(@exampart4_id, @examres3_id, 17);
+-- =============================================
+-- VERIFICATION QUERIES (Optional - comment out if not needed)
+-- =============================================
 
--- 16. Certificates
-INSERT INTO Certificates (student_id, course_id, issue_date, certificate_url, certificate_status) VALUES
-(@student1_id, @course1_id, '2024-04-20', N'https://certificates.languagecenter.com/cert_001.pdf', 'issued'),
-(@student2_id, @course1_id, '2024-04-20', N'https://certificates.languagecenter.com/cert_002.pdf', 'issued'),
-(@student3_id, @course1_id, '2024-04-20', N'https://certificates.languagecenter.com/cert_003.pdf', 'issued'),
-(@student1_id, @course2_id, '2024-06-10', N'https://certificates.languagecenter.com/cert_004.pdf', 'issued'),
-(@student7_id, @course2_id, '2024-06-10', N'https://certificates.languagecenter.com/cert_005.pdf', 'issued');
-
-PRINT '✅ Sample data inserted successfully!';
-PRINT '📊 Summary:';
-PRINT '   - 5 Languages';
-PRINT '   - 10 Language Levels';
-PRINT '   - 13 Users (1 Admin, 4 Teachers, 8 Students)';
-PRINT '   - 5 Courses';
-PRINT '   - 6 Classes';
-PRINT '   - 14 Enrollments';
-PRINT '   - 5 Invoices';
-PRINT '   - 10 Schedules';
-PRINT '   - 9 Attendance Records';
-PRINT '   - 3 Exams';
-PRINT '   - 12 Exam Parts';
-PRINT '   - 6 Exam Results';
-PRINT '   - 18 Exam Part Results';
-PRINT '   - 5 Certificates';
+-- Verify data insertion
+SELECT 'Languages' AS TableName, COUNT(*) AS RecordCount FROM Languages
+UNION ALL
+SELECT 'Languages_Levels', COUNT(*) FROM Languages_Levels
+UNION ALL
+SELECT 'Users', COUNT(*) FROM Users
+UNION ALL
+SELECT 'Teacher', COUNT(*) FROM Teacher
+UNION ALL
+SELECT 'Students', COUNT(*) FROM Students
+UNION ALL
+SELECT 'Courses', COUNT(*) FROM Courses
+UNION ALL
+SELECT 'Classes', COUNT(*) FROM Classes
+UNION ALL
+SELECT 'Enrollments', COUNT(*) FROM Enrollments
+UNION ALL
+SELECT 'Invoices', COUNT(*) FROM Invoices
+UNION ALL
+SELECT 'Schedules', COUNT(*) FROM Schedules
+UNION ALL
+SELECT 'Attendance', COUNT(*) FROM Attendance
+UNION ALL
+SELECT 'Exams', COUNT(*) FROM Exams
+UNION ALL
+SELECT 'ExamParts', COUNT(*) FROM ExamParts
+UNION ALL
+SELECT 'ExamResults', COUNT(*) FROM ExamResults
+UNION ALL
+SELECT 'ExamPartResults', COUNT(*) FROM ExamPartResults
+UNION ALL
+SELECT 'Certificates', COUNT(*) FROM Certificates;
