@@ -56,10 +56,24 @@ namespace examService.Repositories
             }
             return false;
         }
+
         public bool DeleteExam(Guid id)
         {
-            // Implementation for deleting an exam from the database
-            throw new NotImplementedException();
+            // 1. Chuẩn bị tham số
+            SqlParameter[] parameters = new SqlParameter[]
+            {
+                new SqlParameter("@exam_id", id)
+            };
+
+            object? result = _dbContext.ExecuteScalar("sp_DeleteExam", parameters, CommandType.StoredProcedure);
+
+            // 3. Convert kết quả
+            if (result != null && int.TryParse(result.ToString(), out int status))
+            {
+                return status == 1;
+            }
+
+            return false;
         }
     }
 }

@@ -124,9 +124,15 @@ namespace examService.Services
 
             return response;
         }
+
         public void DeleteExam(Guid examId)
         {
-            throw new NotImplementedException();
+            bool isDeleted = _examRepository.DeleteExam(examId);
+
+            if (!isDeleted)
+            {
+                throw new KeyNotFoundException($"Không tìm thấy đề thi với ID: {examId}");
+            }
         }
     }
 }

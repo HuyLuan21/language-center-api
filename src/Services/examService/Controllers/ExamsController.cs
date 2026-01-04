@@ -111,7 +111,35 @@ namespace examService.Controllers
         [HttpDelete("{id}")]
         public ActionResult<ApiResponse<object?, object?>> DeleteExam(Guid id)
         {
-            return Ok();
+            try
+            {
+                _examService.DeleteExam(id);
+
+                return Ok(new ApiResponse<object?, object?>(
+                    success: true,
+                    message: "Xóa đề thi thành công.",
+                    data: null,
+                    metaData: null
+                ));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ApiResponse<object?, object?>(
+                    success: false,
+                    message: ex.Message,
+                    data: null,
+                    metaData: null
+                ));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object?, object?>(
+                    success: false,
+                    message: "Không thể xóa đề thi (Lỗi hệ thống hoặc ràng buộc dữ liệu): " + ex.Message,
+                    data: null,
+                    metaData: null
+                ));
+            }
         }
     }
 }
