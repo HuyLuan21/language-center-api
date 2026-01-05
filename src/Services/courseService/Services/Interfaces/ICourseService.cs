@@ -16,6 +16,7 @@ namespace courseService.Services.Interfaces
         ClassesResponse? Createclass(ClassesCreateRequest request);
         ClassesResponse? Updateclass(Guid id,ClassesUpdateRequest request);
         bool DeleteClass(Guid id);
+        List<StudentsResponse> GetStudentsByClassesId(Guid id);
 
     }
 }

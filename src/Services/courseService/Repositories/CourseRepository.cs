@@ -124,6 +124,23 @@ namespace courseService.Repositories
             string query = $"DELETE FROM Classes WHERE class_id = '{classId}'";
             _dbContext.ExecuteNonQuery(query);
         }
-
+        public List<Students> GetStudentsByClassesId(Guid classId)
+        {
+            string query = $@"
+            SELECT 
+            s.student_id AS StudentId,
+            u.user_id AS UserId,
+            u.full_name AS FullName,
+            u.date_of_birth AS DateOfBirth,
+            u.gender AS Gender,
+            u.address AS Address 
+            FROM Enrollments e 
+            JOIN Students s ON e.student_id = s.student_id 
+            JOIN Users u ON s.user_id = u.user_id 
+            WHERE e.class_id = '{classId}'"; ;
+            var dataTable = _dbContext.ExecuteQuery(query);
+            var students = DatatableHelper.ConvertDataTable<Models.Students>(dataTable);
+            return students;
+        }
     }
 }

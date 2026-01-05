@@ -17,6 +17,7 @@ namespace courseService.Repositories.Interfaces
         void CreateClass(Classes classes);
         void UpdateClass(Classes classes);
         void DeleteClass(Guid id);
+        List<Students> GetStudentsByClassesId(Guid id);
 
     }
 }

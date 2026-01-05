@@ -268,6 +268,19 @@ namespace courseService.Services
             _repository.DeleteClass(id);
             return true;
         }
+        public List<StudentsResponse> GetStudentsByClassesId(Guid id)
+        {
+            var students = _repository.GetStudentsByClassesId(id);
+            return students.Select(s => new StudentsResponse
+            {
+                StudentId = s.StudentId,
+                UserId = s.UserId,
+                FullName = s.FullName,
+                DateOfBirth = s.DateOfBirth,
+                Gender = s.Gender,
+                Address = s.Address
+            }).ToList();
+        }
     }
 }
 

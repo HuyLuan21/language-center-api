@@ -1,4 +1,5 @@
 ﻿using courseService.DTOs;
+using courseService.Models;
 using courseService.Services;
 using Microsoft.AspNetCore.Mvc;
 namespace courseService.Controllers
@@ -129,6 +130,41 @@ namespace courseService.Controllers
                     null,
                     null
                 ));
+            }
+        }
+        [HttpGet("{id}/students")]
+        public ActionResult<ApiResponse<List<StudentsResponse>, object?>> GetStudentsByClassesId(Guid id)
+        {
+            try
+            {
+                var students = _courseService.GetStudentsByClassesId(id);
+
+                if (students == null || students.Count == 0)
+                {
+                    return NotFound(new ApiResponse<List<StudentsResponse>, object?>(
+                        false,
+                        "Không tìm thấy học sinh trong lớp học này",
+                        null,
+                        null
+                    ));
+                }
+
+                return Ok(new ApiResponse<List<StudentsResponse>, object?>(
+                    true,
+                    "Lấy danh sách học sinh thành công",
+                    students,
+                    null
+                    ));
+             
+            }
+            catch(Exception ex)
+            {
+                return BadRequest(new ApiResponse<List<StudentsResponse>, object?>(
+                  false,
+                  ex.Message,
+                  null,
+                  null
+              ));
             }
         }
     }
