@@ -8,6 +8,8 @@ namespace courseService.Services.Interfaces
         CourseResponse? GetCourseById(Guid id);
         CourseResponse? CreateCourse(CourseCreateRequest request);
         CourseResponse? UpdateCourse(Guid id, CourseUpdateRequest request);
-
+        bool DeleteCourse(Guid id);
+        List<CourseResponse> SearchCourses(string keyword);
+        CourseResponse? UpdateCourseThumbnail(Guid courseId, string thumbnailUrl);
     }
 }

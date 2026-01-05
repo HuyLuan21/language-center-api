@@ -42,5 +42,43 @@ namespace courseService.Repositories
             $"WHERE course_id = '{course.course_id}'";
             _dbContext.ExecuteNonQuery(query);
         }
+        public void DeleteCourse(Guid courseId)
+        {
+            string query = $"DELETE FROM Courses WHERE course_id = '{courseId}'";
+            _dbContext.ExecuteNonQuery(query);
+        }
+        public List<Courese> SearchCourses(string keyword)
+        {
+            bool isGuid = Guid.TryParse(keyword, out Guid guid);
+
+            string query;
+
+            if (isGuid)
+            {
+                query = $@"
+            SELECT * FROM Courses
+            WHERE course_name LIKE '%{keyword}%'
+               OR course_id = '{guid}'
+               OR language_level_id = '{guid}'
+        ";
+            }
+            else
+            {
+                query = $@"
+            SELECT * FROM Courses
+            WHERE course_name LIKE '%{keyword}%'
+        ";
+            }
+
+            var dataTable = _dbContext.ExecuteQuery(query);
+            return DatatableHelper.ConvertDataTable<Courese>(dataTable);
+        }
+        public void UpdateCourseThumbnail(Guid courseId, string thumbnailUrl)
+        {
+            string query = $@"UPDATE Courses
+            SET thumbnail_url = '{thumbnailUrl}'
+            WHERE course_id = '{courseId}'";
+            _dbContext.ExecuteNonQuery(query);
+        }
     }
 }

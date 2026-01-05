@@ -86,7 +86,7 @@ namespace courseService.Services
 
             var course = new Courese
             {
-                course_id = id, // 🔥 LẤY TỪ ROUTE
+                course_id = id,
                 course_name = request.course_name,
                 language_level_id = request.language_level_id,
                 description = request.description,
@@ -110,7 +110,51 @@ namespace courseService.Services
                 course_status = course.course_status
             };
         }
+       public bool DeleteCourse(Guid id)
+        {
+            var existingCourse = _repository.GetCourseById(id);
+            if (existingCourse == null)
+                return false;
+            _repository.DeleteCourse(id);
+            return true;
+        }
+        public List<CourseResponse> SearchCourses(string keyword)
+        {
+            var courses = _repository.SearchCourses(keyword);
+            return courses.Select(c => new CourseResponse
+            {
+                course_id = c.course_id,
+                course_name = c.course_name,
+                language_level_id = c.language_level_id,
+                description = c.description,
+                duration_hours = c.duration_hours,
+                fee = c.fee,
+                thumbnail_url = c.thumbnail_url,
+                course_status = c.course_status
+            }).ToList();
+        }
+        public CourseResponse? UpdateCourseThumbnail(Guid courseId, string thumbnailUrl)
+        {
+            var course = _repository.GetCourseById(courseId);
+            if (course == null)
+                return null;
 
+            _repository.UpdateCourseThumbnail(courseId, thumbnailUrl);
+
+            course.thumbnail_url = thumbnailUrl;
+
+            return new CourseResponse
+            {
+                course_id = course.course_id,
+                course_name = course.course_name,
+                language_level_id = course.language_level_id,
+                description = course.description,
+                duration_hours = course.duration_hours,
+                fee = course.fee,
+                thumbnail_url = thumbnailUrl,
+                course_status = course.course_status
+            };
+        }
     }
 }
 

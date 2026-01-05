@@ -1,8 +1,7 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using courseService.Services;
-//using courseService.DTOs.Auth;
+﻿//using courseService.DTOs.Auth;
 using courseService.DTOs;
-using courseService.Models;
+using courseService.Services;
+using Microsoft.AspNetCore.Mvc;
 
 namespace courseService.Controllers
 {
@@ -117,5 +116,93 @@ namespace courseService.Controllers
                 ));
             }
         }
+        [HttpDelete("{id}")]
+        public ActionResult<ApiResponse<object?, object?>> DeleteCourse(Guid id)
+        {
+            try
+            {
+                bool isDeleted = _courseService.DeleteCourse(id);
+                if (!isDeleted)
+                {
+                    return NotFound(new ApiResponse<object?, object?>(
+                        false,
+                        "Không tìm thấy khóa học để xóa",
+                        null,
+                        null
+                    ));
+                }
+                return Ok(new ApiResponse<object?, object?>(
+                    true,
+                    "Xóa khóa học thành công",
+                    null,
+                    null
+                ));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<object?, object?>(
+                    false,
+                    ex.Message,
+                    null,
+                    null
+                ));
+            }
+        }
+        [HttpGet("search/{keyword}")]
+        public ActionResult<ApiResponse<List<CourseResponse>, object?>> SearchCourses([FromRoute] string keyword)
+        {
+            if (string.IsNullOrWhiteSpace(keyword))
+            {
+                return BadRequest(new ApiResponse<List<CourseResponse>, object?>(
+                    false,
+                    "Từ khóa tìm kiếm không được để trống",
+                    null,
+                    null
+                ));
+            }
+
+            var courses = _courseService.SearchCourses(keyword);
+
+            return Ok(new ApiResponse<List<CourseResponse>, object?>(
+                true,
+                "Tìm kiếm khóa học thành công",
+                courses,
+                null
+            ));
+        }
+        [HttpPost("{id}/thumbnail")]
+        public ActionResult<ApiResponse<CourseResponse, object?>> UpdateCourseThumbnail(Guid id,
+        [FromBody] CourseUpdateThumbnailRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.thumbnail_url))
+            {
+                return BadRequest(new ApiResponse<CourseResponse, object?>(
+                    false,
+                    "Thumbnail URL không hợp lệ",
+                    null,
+                    null
+                ));
+            }
+
+            var updatedCourse = _courseService.UpdateCourseThumbnail(id, request.thumbnail_url);
+
+            if (updatedCourse == null)
+            {
+                return NotFound(new ApiResponse<CourseResponse, object?>(
+                    false,
+                    "Không tìm thấy khóa học",
+                    null,
+                    null
+                ));
+            }
+
+            return Ok(new ApiResponse<CourseResponse, object?>(
+                true,
+                "Cập nhật thumbnail thành công",
+                updatedCourse,
+                null
+            ));
+        }
+
     }
 }
