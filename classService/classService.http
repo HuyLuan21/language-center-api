@@ -1,6 +1,0 @@
-@classService_HostAddress = http://localhost:5261
-
-GET {{classService_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

@@ -1,4 +1,4 @@
-namespace classService
+namespace API_Gateway
 {
     public class WeatherForecast
     {

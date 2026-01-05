@@ -110,7 +110,7 @@ namespace courseService.Services
                 course_status = course.course_status
             };
         }
-       public bool DeleteCourse(Guid id)
+        public bool DeleteCourse(Guid id)
         {
             var existingCourse = _repository.GetCourseById(id);
             if (existingCourse == null)
@@ -203,6 +203,70 @@ namespace courseService.Services
                 max_students = classes.max_students,
                 class_status = classes.class_status
             };
+        }
+        public ClassesResponse Createclass(ClassesCreateRequest request)
+        {
+            var classes = new Classes
+            {
+                class_id = Guid.NewGuid(),
+                course_id = request.course_id,
+                teacher_id = request.teacher_id,
+                class_name = request.class_name,
+                start_date = request.start_date,
+                end_date = request.end_date,
+                max_students = request.max_students,
+                class_status = request.class_status
+            };
+            _repository.CreateClass(classes);
+            return new ClassesResponse
+            {
+                class_id = classes.class_id,
+                course_id = classes.course_id,
+                teacher_id = classes.teacher_id,
+                class_name = classes.class_name,
+                start_date = classes.start_date,
+                end_date = classes.end_date,
+                max_students = classes.max_students,
+                class_status = classes.class_status
+            };
+        }
+        public ClassesResponse? Updateclass(Guid id,ClassesUpdateRequest request)
+        {
+            var existingClass = _repository.GetClassById(id);
+            if (existingClass == null)
+                return null;
+            var classes = new Classes
+            {
+                class_id = request.class_id,
+                course_id = request.course_id,
+                teacher_id = request.teacher_id,
+                class_name = request.class_name,
+                start_date = request.start_date,
+                end_date = request.end_date,
+                max_students = request.max_students,
+                class_status = request.class_status
+            };
+            _repository.UpdateClass(classes);
+            return new ClassesResponse
+            {
+                class_id = classes.class_id,
+                course_id = classes.course_id,
+                teacher_id = classes.teacher_id,
+                class_name = classes.class_name,
+                start_date = classes.start_date,
+                end_date = classes.end_date,
+                max_students = classes.max_students,
+                class_status = classes.class_status
+            };
+
+        }
+        public bool DeleteClass(Guid id)
+        {
+            var existingClass = _repository.GetClassById(id);
+            if (existingClass == null)
+                return false;
+            _repository.DeleteClass(id);
+            return true;
         }
     }
 }

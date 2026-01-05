@@ -1,7 +1,6 @@
 ﻿using courseService.Models;
 using courseService.Repositories.Interfaces;
 using courseService.Utils;
-using System.Data;
 namespace courseService.Repositories
 {
     public class CourseRepository(DbContext dbContext) : ICourseRepository
@@ -59,16 +58,12 @@ namespace courseService.Repositories
                 query = $@"
             SELECT * FROM Courses
             WHERE course_name LIKE '%{keyword}%'
-               OR course_id = '{guid}'
-               OR language_level_id = '{guid}'
-        ";
+            OR course_id = '{guid}'
+            OR language_level_id = '{guid}'";
             }
             else
             {
-                query = $@"
-            SELECT * FROM Courses
-            WHERE course_name LIKE '%{keyword}%'
-        ";
+                query = $@"SELECT * FROM Courses WHERE course_name LIKE '%{keyword}%'";
             }
 
             var dataTable = _dbContext.ExecuteQuery(query);
@@ -103,8 +98,32 @@ namespace courseService.Repositories
             var classList = DatatableHelper.ConvertDataTable<Models.Classes>(dataTable);
             return classList.FirstOrDefault();
         }
-        //public void CreateClass(Classes classes)
-        //{
-        //    string query = $""
-        // }
+
+        public void CreateClass(Classes classes)
+        {
+            string query = "INSERT INTO Classes (course_id, teacher_id, class_name, start_date, end_date, max_students, class_status) " +
+                           $"VALUES ('{classes.course_id}', '{classes.teacher_id}', N'{classes.class_name}', '{classes.start_date:yyyy-MM-dd}', '{classes.end_date:yyyy-MM-dd}', {classes.max_students}, N'{classes.class_status}')";
+
+            _dbContext.ExecuteNonQuery(query);
+        }
+        public void UpdateClass(Classes classes)
+        {
+            string query = "UPDATE Classes SET " +
+                           $"course_id = '{classes.course_id}', " +
+                           $"teacher_id = '{classes.teacher_id}', " +
+                           $"class_name = N'{classes.class_name}', " +
+                           $"start_date = '{classes.start_date:yyyy-MM-dd}', " +
+                           $"end_date = '{classes.end_date:yyyy-MM-dd}', " +
+                           $"max_students = {classes.max_students}, " +
+                           $"class_status = N'{classes.class_status}' " +
+                           $"WHERE class_id = '{classes.class_id}'";
+            _dbContext.ExecuteNonQuery(query);
+        }
+        public void DeleteClass(Guid classId)
+        {
+            string query = $"DELETE FROM Classes WHERE class_id = '{classId}'";
+            _dbContext.ExecuteNonQuery(query);
+        }
+
+    }
 }

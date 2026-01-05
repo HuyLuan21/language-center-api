@@ -209,7 +209,7 @@ namespace courseService.Controllers
             try
             {
                 var classes = _courseService.GetClassesByCourseId(id);
-                if(classes == null || classes.Count == 0)
+                if (classes == null || classes.Count == 0)
                 {
                     return NotFound(new ApiResponse<List<ClassesResponse>, object?>(
                         false,

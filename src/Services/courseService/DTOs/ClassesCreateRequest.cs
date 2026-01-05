@@ -1,6 +1,6 @@
-﻿namespace classService.DTOs
+﻿namespace courseService.DTOs
 {
-    public class ClassesResponse
+    public class ClassesCreateRequest
     {
         public Guid class_id { get; set; }
         public Guid course_id { get; set; }

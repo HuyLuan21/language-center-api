@@ -13,5 +13,9 @@ namespace courseService.Services.Interfaces
         CourseResponse? UpdateCourseThumbnail(Guid courseId, string thumbnailUrl);
         List<ClassesResponse> GetClassesByCourseId(Guid courseId);
         List<ClassesResponse> GetAllClasses();
+        ClassesResponse? Createclass(ClassesCreateRequest request);
+        ClassesResponse? Updateclass(Guid id,ClassesUpdateRequest request);
+        bool DeleteClass(Guid id);
+
     }
 }
