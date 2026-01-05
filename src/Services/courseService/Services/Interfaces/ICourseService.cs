@@ -11,5 +11,7 @@ namespace courseService.Services.Interfaces
         bool DeleteCourse(Guid id);
         List<CourseResponse> SearchCourses(string keyword);
         CourseResponse? UpdateCourseThumbnail(Guid courseId, string thumbnailUrl);
+        List<ClassesResponse> GetClassesByCourseId(Guid courseId);
+        List<ClassesResponse> GetAllClasses();
     }
 }

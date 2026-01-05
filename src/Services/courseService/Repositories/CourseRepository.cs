@@ -1,6 +1,7 @@
 ﻿using courseService.Models;
 using courseService.Repositories.Interfaces;
 using courseService.Utils;
+using System.Data;
 namespace courseService.Repositories
 {
     public class CourseRepository(DbContext dbContext) : ICourseRepository
@@ -14,7 +15,7 @@ namespace courseService.Repositories
             return course;
 
         }
-        //Get  course by id
+
         public Courese GetCourseById(Guid course)
         {
             string query = $"SELECT * from Courses where course_id = '{course}'";
@@ -80,5 +81,30 @@ namespace courseService.Repositories
             WHERE course_id = '{courseId}'";
             _dbContext.ExecuteNonQuery(query);
         }
-    }
+        public List<Classes> GetClassesByCourseId(Guid courseId)
+        {
+            string query = $"SELECT * from Classes where course_id = '{courseId}'";
+            var dataTable = _dbContext.ExecuteQuery(query);
+            var classes = DatatableHelper.ConvertDataTable<Models.Classes>(dataTable);
+            return classes;
+        }
+        public List<Classes> GetAllClasses()
+        {
+            string query = $"SELECT * from Classes";
+            var dataTable = _dbContext.ExecuteQuery(query);
+            var classes = DatatableHelper.ConvertDataTable<Models.Classes>(dataTable);
+            return classes;
+        }
+        public Classes GetClassById(Guid classId)
+        {
+            string query = $"SELECT * FROM Classes WHERE class_id = '{classId}'";
+            var dataTable = _dbContext.ExecuteQuery(query);
+
+            var classList = DatatableHelper.ConvertDataTable<Models.Classes>(dataTable);
+            return classList.FirstOrDefault();
+        }
+        //public void CreateClass(Classes classes)
+        //{
+        //    string query = $""
+        // }
 }

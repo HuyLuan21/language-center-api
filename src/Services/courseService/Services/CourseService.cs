@@ -155,6 +155,55 @@ namespace courseService.Services
                 course_status = course.course_status
             };
         }
+        public List<ClassesResponse> GetClassesByCourseId(Guid courseId)
+        {
+            var classes = _repository.GetClassesByCourseId(courseId);
+            return classes.Select(c => new ClassesResponse
+            {
+                class_id = c.class_id,
+                course_id = c.course_id,
+                teacher_id = c.teacher_id,
+                class_name = c.class_name,
+                start_date = c.start_date,
+                end_date = c.end_date,
+                max_students = c.max_students,
+                class_status = c.class_status
+            }).ToList();
+        }
+        public List<ClassesResponse> GetAllClasses()
+        {
+            var classes = _repository.GetAllClasses();
+            return classes.Select(c => new ClassesResponse
+            {
+                class_id = c.class_id,
+                course_id = c.course_id,
+                teacher_id = c.teacher_id,
+                class_name = c.class_name,
+                start_date = c.start_date,
+                end_date = c.end_date,
+                max_students = c.max_students,
+                class_status = c.class_status
+            }).ToList();
+        }
+        public ClassesResponse? GetClassById(Guid classId)
+        {
+            var classes = _repository.GetClassById(classId);
+
+            if (classes == null)
+                return null;
+
+            return new ClassesResponse
+            {
+                class_id = classes.class_id,
+                course_id = classes.course_id,
+                teacher_id = classes.teacher_id,
+                class_name = classes.class_name,
+                start_date = classes.start_date,
+                end_date = classes.end_date,
+                max_students = classes.max_students,
+                class_status = classes.class_status
+            };
+        }
     }
 }
 

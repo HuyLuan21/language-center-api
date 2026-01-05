@@ -11,6 +11,12 @@ namespace courseService.Repositories.Interfaces
         void DeleteCourse(Guid id);
         List<Courese> SearchCourses(string keyword);
         void UpdateCourseThumbnail(Guid courseId, string thumbnailUrl);
+        List<Classes> GetClassesByCourseId(Guid courseId);
+        List<Classes> GetAllClasses();
+        Classes? GetClassById(Guid id);
+        //void DeleteClass(Guid id);
+        //void UpdateClass(Classes classes);
+        //void CreateClass(Classes classes);
 
     }
 }

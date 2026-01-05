@@ -203,6 +203,38 @@ namespace courseService.Controllers
                 null
             ));
         }
+        [HttpGet("{id}/classes")]
+        public ActionResult<ApiResponse<List<ClassesResponse>, object?>> GetClassesByCourseId(Guid id)
+        {
+            try
+            {
+                var classes = _courseService.GetClassesByCourseId(id);
+                if(classes == null || classes.Count == 0)
+                {
+                    return NotFound(new ApiResponse<List<ClassesResponse>, object?>(
+                        false,
+                        "Không tìm thấy lớp học nào cho khóa học này",
+                        null,
+                        null
+                    ));
+                }
+                return Ok(new ApiResponse<List<ClassesResponse>, object?>(
+                    true,
+                    "Lấy danh sách lớp học trong khóa học thành công",
+                    classes,
+                    null
+                ));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new ApiResponse<List<ClassesResponse>, object?>(
+                    false,
+                    ex.Message,
+                    null,
+                    null
+                ));
+            }
 
+        }
     }
 }
