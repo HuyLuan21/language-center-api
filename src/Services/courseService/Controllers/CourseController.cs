@@ -162,7 +162,15 @@ namespace courseService.Controllers
             }
 
             var courses = _courseService.SearchCourses(keyword);
-
+            if(courses == null || courses.Count == 0)
+            {
+                return NotFound(new ApiResponse<List<CourseResponse>, object?>(
+                    false,
+                    "Không tìm thấy khóa học nào phù hợp với từ khóa",
+                    null,
+                    null
+                ));
+            }
             return Ok(new ApiResponse<List<CourseResponse>, object?>(
                 true,
                 "Tìm kiếm khóa học thành công",
@@ -170,7 +178,7 @@ namespace courseService.Controllers
                 null
             ));
         }
-        [HttpPost("{id}/thumbnail")]
+        [HttpPatch("{id}/thumbnail")]
         public ActionResult<ApiResponse<CourseResponse, object?>> UpdateCourseThumbnail(Guid id,
         [FromBody] CourseUpdateThumbnailRequest request)
         {

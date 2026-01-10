@@ -230,14 +230,16 @@ namespace courseService.Services
                 class_status = classes.class_status
             };
         }
-        public ClassesResponse? Updateclass(Guid id,ClassesUpdateRequest request)
+        public ClassesResponse? Updateclass(Guid id, ClassesUpdateRequest request)
         {
             var existingClass = _repository.GetClassById(id);
             if (existingClass == null)
                 return null;
+
+            // Sử dụng biến 'id' truyền vào từ URL thay vì 'request.class_id'
             var classes = new Classes
             {
-                class_id = request.class_id,
+                class_id = id, // Fix quan trọng nhất ở đây
                 course_id = request.course_id,
                 teacher_id = request.teacher_id,
                 class_name = request.class_name,
@@ -246,7 +248,9 @@ namespace courseService.Services
                 max_students = request.max_students,
                 class_status = request.class_status
             };
+
             _repository.UpdateClass(classes);
+
             return new ClassesResponse
             {
                 class_id = classes.class_id,
@@ -258,7 +262,6 @@ namespace courseService.Services
                 max_students = classes.max_students,
                 class_status = classes.class_status
             };
-
         }
         public bool DeleteClass(Guid id)
         {

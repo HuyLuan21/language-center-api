@@ -1,6 +1,7 @@
 ﻿using courseService.Repositories;             // <-- THÊM
 using courseService.Repositories.Interfaces;  // <-- THÊM
 using courseService.Services;
+
 namespace courseService
 {
     public class Program
@@ -21,6 +22,25 @@ namespace courseService
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
+
+            string[] allowedOrigins = new string[]
+            {
+                "http://localhost:5173",
+                "http://127.0.0.1:5500",
+            };
+
+            // Thêm CORS service
+            builder.Services.AddCors(options =>
+            {
+                options.AddDefaultPolicy(corsBuilder =>
+                {
+                    corsBuilder
+                        .WithOrigins(allowedOrigins)
+                        .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE")
+                        .WithHeaders("Content-Type", "Authorization");
+                });
+            });
+
             var app = builder.Build();
 
             if (app.Environment.IsDevelopment())
@@ -32,6 +52,9 @@ namespace courseService
             app.UseHttpsRedirection();
             app.UseAuthorization();
             app.MapControllers();
+
+            app.UseCors();
+
             app.Run();
 
         }

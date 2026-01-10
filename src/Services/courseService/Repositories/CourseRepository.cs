@@ -25,16 +25,16 @@ namespace courseService.Repositories
         public void CreateCourse(Courese course)
         {
             string query = $"INSERT INTO Courses (course_name, language_level_id, description, duration_hours, fee, thumbnail_url, course_status) " +
-            $"VALUES ('{course.course_name}', '{course.language_level_id}', '{course.description}', {course.duration_hours}, {course.fee}, '{course.thumbnail_url}', '{course.course_status}')";
+            $"VALUES (N'{course.course_name}', '{course.language_level_id}', N'{course.description}', {course.duration_hours}, {course.fee}, '{course.thumbnail_url}', '{course.course_status}')";
             _dbContext.ExecuteNonQuery(query);
 
         }
         public void UpdateCourse(Courese course)
         {
             string query = $"UPDATE Courses SET " +
-            $"course_name = '{course.course_name}', " +
+            $"course_name = N'{course.course_name}', " +
             $"language_level_id = '{course.language_level_id}', " +
-            $"description = '{course.description}', " +
+            $"description = N'{course.description}', " +
             $"duration_hours = {course.duration_hours}, " +
             $"fee = {course.fee}, " +
             $"thumbnail_url = '{course.thumbnail_url}', " +

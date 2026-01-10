@@ -458,13 +458,13 @@ DECLARE @JapaneseN5 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_
 DECLARE @KoreanL1 UNIQUEIDENTIFIER = (SELECT language_level_id FROM Languages_Levels WHERE language_code = 'KR' AND level_order = 1);
 
 INSERT INTO Courses (course_name, language_level_id, description, duration_hours, fee, thumbnail_url, course_status) VALUES
-(N'English for Beginners - A1', @EnglishA1, N'Complete beginner English course covering basics of grammar, vocabulary, and conversation', 60, 3000000, 'https://example.com/courses/english-a1.jpg', 'active'),
-(N'Elementary English - A2', @EnglishA2, N'Build on your English foundation with expanded vocabulary and grammar structures', 60, 3200000, 'https://example.com/courses/english-a2.jpg', 'active'),
-(N'Intermediate English - B1', @EnglishB1, N'Develop fluency and confidence in everyday English communication', 80, 4000000, 'https://example.com/courses/english-b1.jpg', 'active'),
-(N'French Basics - A1', @FrenchA1, N'Introduction to French language and culture for complete beginners', 60, 3500000, 'https://example.com/courses/french-a1.jpg', 'active'),
-(N'German for Beginners - A1', @GermanA1, N'Start your journey in learning German language', 60, 3500000, 'https://example.com/courses/german-a1.jpg', 'active'),
-(N'Japanese N5 - Beginner', @JapaneseN5, N'JLPT N5 preparation course with Hiragana, Katakana, and basic Kanji', 70, 4000000, 'https://example.com/courses/japanese-n5.jpg', 'active'),
-(N'Korean Level 1', @KoreanL1, N'Learn Korean alphabet (Hangul) and basic conversation', 60, 3800000, 'https://example.com/courses/korean-l1.jpg', 'active');
+(N'English for Beginners - A1', @EnglishA1, N'Complete beginner English course covering basics of grammar, vocabulary, and conversation', 60, 3000000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active'),
+(N'Elementary English - A2', @EnglishA2, N'Build on your English foundation with expanded vocabulary and grammar structures', 60, 3200000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active'),
+(N'Intermediate English - B1', @EnglishB1, N'Develop fluency and confidence in everyday English communication', 80, 4000000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active'),
+(N'French Basics - A1', @FrenchA1, N'Introduction to French language and culture for complete beginners', 60, 3500000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active'),
+(N'German for Beginners - A1', @GermanA1, N'Start your journey in learning German language', 60, 3500000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active'),
+(N'Japanese N5 - Beginner', @JapaneseN5, N'JLPT N5 preparation course with Hiragana, Katakana, and basic Kanji', 70, 4000000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active'),
+(N'Korean Level 1', @KoreanL1, N'Learn Korean alphabet (Hangul) and basic conversation', 60, 3800000, 'https://res.cloudinary.com/dkeeelvpa/image/upload/v1765332193/image001_fmw9gt.jpg', 'active');
 
 -- 7. INSERT Classes
 DECLARE @Teacher1 UNIQUEIDENTIFIER = (SELECT teacher_id FROM Teacher WHERE user_id = (SELECT user_id FROM Users WHERE username = 'teacher01'));
